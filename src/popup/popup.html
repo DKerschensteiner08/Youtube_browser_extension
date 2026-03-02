@@ -22,6 +22,25 @@
       </section>
 
       <section class="card">
+        <h2>Focus Session</h2>
+        <label class="control-label" for="sessionDuration">Session duration</label>
+        <select id="sessionDuration" class="session-select">
+          <option value="10">10 minutes</option>
+          <option value="20">20 minutes</option>
+          <option value="30" selected>30 minutes</option>
+          <option value="45">45 minutes</option>
+          <option value="60">60 minutes</option>
+        </select>
+        <div class="button-row">
+          <button id="startSessionBtn" type="button">Start Focus Session</button>
+          <button id="startBreakBtn" type="button" class="secondary">Take a 5-minute break</button>
+        </div>
+        <p id="timerStatus" class="note">No active session or break.</p>
+        <button id="endTimerBtn" type="button" class="secondary hidden">End session or break now</button>
+        <p class="note">Timed sessions temporarily override the master Focus toggle.</p>
+      </section>
+
+      <section class="card">
         <h2>Distractions</h2>
         <label class="toggle-row"><span>Hide Shorts</span><input id="hideShorts" type="checkbox" /></label>
         <label class="toggle-row"><span>Hide Up Next Sidebar</span><input id="hideSidebarRecs" type="checkbox" /></label>

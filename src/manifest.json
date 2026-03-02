@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "YouTube Focus Mode",
-  "version": "2.0.0",
-  "description": "Focus toolkit for YouTube: hide distractions, filter keywords, schedule focus windows, and track local stats.",
+  "version": "2.1.0",
+  "description": "Focus toolkit for YouTube with timed focus sessions, quick breaks, distraction filters, and local-only stats.",
   "permissions": ["storage", "alarms"],
   "host_permissions": ["https://www.youtube.com/*"],
   "background": {

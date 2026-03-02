@@ -8,17 +8,44 @@
     bypassActive: false,
   };
 
+  function getTimerOverride(settings, now = new Date()) {
+    const endsAt = Number(settings.sessionEndsAt) || 0;
+    if (settings.sessionState === 'focus_session' && now.getTime() < endsAt) {
+      return { active: true, mode: 'focus_session', endsAt };
+    }
+    if (settings.sessionState === 'break' && now.getTime() < endsAt) {
+      return { active: true, mode: 'break', endsAt };
+    }
+    return { active: false, mode: 'none', endsAt: 0 };
+  }
+
+  function computeEffectiveFocus(settings, now = new Date()) {
+    const timer = getTimerOverride(settings, now);
+    if (timer.active && timer.mode === 'focus_session') {
+      return true;
+    }
+    if (timer.active && timer.mode === 'break') {
+      return false;
+    }
+    return YFM.schedule.effectiveFocusEnabled(settings, now);
+  }
+
   function getRuntimeStatus(now = new Date()) {
     const pageType = YFM.pageDetect.detectPageType(location.href);
     const bypassUntil = Number(state.settings.focusBypassUntil) || 0;
     const bypassActive = now.getTime() < bypassUntil;
+    const timer = getTimerOverride(state.settings, now);
 
     return {
       pageType,
       bypassUntil,
       bypassActive,
-      effectiveFocusEnabled: YFM.schedule.effectiveFocusEnabled(state.settings, now),
+      effectiveFocusEnabled: computeEffectiveFocus(state.settings, now),
       scheduleActive: YFM.schedule.isWithinSchedule(state.settings, now),
+      sessionState: timer.mode,
+      sessionEndsAt: timer.endsAt,
+      timerActive: timer.active,
+      timerRemainingMs: timer.active ? Math.max(0, timer.endsAt - now.getTime()) : 0,
     };
   }
 

@@ -103,6 +103,27 @@ textarea {
   flex: 1;
 }
 
+.control-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #404650;
+}
+
+.session-select {
+  width: 100%;
+  border: 1px solid #cdd3db;
+  border-radius: 8px;
+  padding: 8px;
+  font-size: 13px;
+  background: #fff;
+}
+
+.button-row {
+  display: grid;
+  gap: 8px;
+}
+
 button {
   width: 100%;
   margin-top: 8px;
@@ -123,4 +144,8 @@ button.secondary {
 .stat-line {
   margin: 4px 0;
   font-size: 13px;
+}
+
+.hidden {
+  display: none !important;
 }

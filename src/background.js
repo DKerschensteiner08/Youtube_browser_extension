@@ -4,6 +4,9 @@ const DEFAULT_SYNC_SETTINGS = {
   scheduleDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
   scheduleStart: '20:00',
   scheduleEnd: '23:00',
+  sessionState: 'none',
+  sessionEndsAt: 0,
+  restoreFocusEnabled: true,
 };
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -11,6 +14,8 @@ const DAY_TO_INDEX = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
 const PERIODIC_ALARM = 'yfm-periodic-check';
 const BOUNDARY_ALARM = 'yfm-schedule-boundary';
+const TIMER_END_ALARM = 'yfm-timer-end';
+const TIMER_FALLBACK_ALARM = 'yfm-timer-fallback';
 
 function todayKey(date = new Date()) {
   const y = date.getFullYear();
@@ -44,7 +49,7 @@ async function getTodayStats() {
 }
 
 function parseMinutes(hhmm) {
-  const match = /^(\\d{2}):(\\d{2})$/.exec(hhmm || '');
+  const match = /^(\d{2}):(\d{2})$/.exec(hhmm || '');
   if (!match) return 0;
   return Number(match[1]) * 60 + Number(match[2]);
 }
@@ -93,6 +98,19 @@ function computeNextBoundary(settings, now = new Date()) {
   return candidates[0];
 }
 
+function normalizeSessionState(value) {
+  if (value === 'focus_session' || value === 'break') {
+    return value;
+  }
+  return 'none';
+}
+
+function isActiveTimer(settings, nowMs = Date.now()) {
+  const state = normalizeSessionState(settings.sessionState);
+  const endsAt = Math.max(0, Number(settings.sessionEndsAt) || 0);
+  return (state === 'focus_session' || state === 'break') && nowMs < endsAt;
+}
+
 async function getSyncSettings() {
   const stored = await chrome.storage.sync.get(DEFAULT_SYNC_SETTINGS);
   const daySet = new Set(DAY_NAMES);
@@ -104,21 +122,16 @@ async function getSyncSettings() {
     focusEnabled: Boolean(stored.focusEnabled),
     scheduleEnabled: Boolean(stored.scheduleEnabled),
     scheduleDays: scheduleDays.length ? scheduleDays : DEFAULT_SYNC_SETTINGS.scheduleDays,
-    scheduleStart: typeof stored.scheduleStart === 'string' ? stored.scheduleStart : DEFAULT_SYNC_SETTINGS.scheduleStart,
-    scheduleEnd: typeof stored.scheduleEnd === 'string' ? stored.scheduleEnd : DEFAULT_SYNC_SETTINGS.scheduleEnd,
+    scheduleStart:
+      typeof stored.scheduleStart === 'string'
+        ? stored.scheduleStart
+        : DEFAULT_SYNC_SETTINGS.scheduleStart,
+    scheduleEnd:
+      typeof stored.scheduleEnd === 'string' ? stored.scheduleEnd : DEFAULT_SYNC_SETTINGS.scheduleEnd,
+    sessionState: normalizeSessionState(stored.sessionState),
+    sessionEndsAt: Math.max(0, Number(stored.sessionEndsAt) || 0),
+    restoreFocusEnabled: Boolean(stored.restoreFocusEnabled),
   };
-}
-
-async function scheduleBoundaryAlarm() {
-  const settings = await getSyncSettings();
-  await chrome.alarms.clear(BOUNDARY_ALARM);
-
-  const nextBoundary = computeNextBoundary(settings, new Date());
-  if (!nextBoundary) return;
-
-  chrome.alarms.create(BOUNDARY_ALARM, {
-    when: nextBoundary.getTime(),
-  });
 }
 
 async function notifyYouTubeTabs(type = 'APPLY_NOW') {
@@ -135,9 +148,149 @@ async function notifyYouTubeTabs(type = 'APPLY_NOW') {
   );
 }
 
+async function scheduleBoundaryAlarm() {
+  const settings = await getSyncSettings();
+  await chrome.alarms.clear(BOUNDARY_ALARM);
+
+  const nextBoundary = computeNextBoundary(settings, new Date());
+  if (!nextBoundary) return;
+
+  chrome.alarms.create(BOUNDARY_ALARM, { when: nextBoundary.getTime() });
+}
+
+async function clearTimerAlarms() {
+  await Promise.all([chrome.alarms.clear(TIMER_END_ALARM), chrome.alarms.clear(TIMER_FALLBACK_ALARM)]);
+}
+
+async function ensureTimerAlarms() {
+  const settings = await getSyncSettings();
+
+  if (!isActiveTimer(settings)) {
+    await clearTimerAlarms();
+    return;
+  }
+
+  await chrome.alarms.clear(TIMER_END_ALARM);
+  chrome.alarms.create(TIMER_END_ALARM, { when: settings.sessionEndsAt });
+  chrome.alarms.create(TIMER_FALLBACK_ALARM, { periodInMinutes: 1 });
+}
+
+async function clearActiveTimerAndRestore(settings) {
+  const patch = {
+    sessionState: 'none',
+    sessionEndsAt: 0,
+  };
+
+  if (settings.sessionState === 'focus_session') {
+    patch.focusEnabled = Boolean(settings.restoreFocusEnabled);
+  }
+
+  await chrome.storage.sync.set(patch);
+  await clearTimerAlarms();
+  await notifyYouTubeTabs('APPLY_NOW');
+
+  return {
+    ...settings,
+    ...patch,
+  };
+}
+
+async function normalizeExpiredTimerIfNeeded() {
+  const settings = await getSyncSettings();
+  const active = isActiveTimer(settings);
+
+  if (active) {
+    await ensureTimerAlarms();
+    return settings;
+  }
+
+  if (settings.sessionState !== 'none' || settings.sessionEndsAt !== 0) {
+    return clearActiveTimerAndRestore(settings);
+  }
+
+  await clearTimerAlarms();
+  return settings;
+}
+
+async function startFocusSession(durationMinutes) {
+  const settings = await getSyncSettings();
+  const now = Date.now();
+  const duration = Math.max(1, Number(durationMinutes) || 0);
+  const endsAt = now + duration * 60 * 1000;
+
+  const keepExistingRestore =
+    settings.sessionState === 'focus_session' && settings.sessionEndsAt > now && isActiveTimer(settings, now);
+
+  const restoreFocusEnabled = keepExistingRestore
+    ? Boolean(settings.restoreFocusEnabled)
+    : Boolean(settings.focusEnabled);
+
+  const patch = {
+    focusEnabled: true,
+    sessionState: 'focus_session',
+    sessionEndsAt: endsAt,
+    restoreFocusEnabled,
+  };
+
+  await chrome.storage.sync.set(patch);
+  await ensureTimerAlarms();
+  await notifyYouTubeTabs('APPLY_NOW');
+
+  return { ...settings, ...patch };
+}
+
+async function startBreak(durationMinutes) {
+  const settings = await getSyncSettings();
+  const now = Date.now();
+  const duration = Math.max(1, Number(durationMinutes) || 0);
+  const endsAt = now + duration * 60 * 1000;
+
+  const patch = {
+    sessionState: 'break',
+    sessionEndsAt: endsAt,
+  };
+
+  if (settings.sessionState === 'focus_session' && isActiveTimer(settings, now)) {
+    const restored = Boolean(settings.restoreFocusEnabled);
+    patch.focusEnabled = restored;
+    patch.restoreFocusEnabled = restored;
+  }
+
+  await chrome.storage.sync.set(patch);
+  await ensureTimerAlarms();
+  await notifyYouTubeTabs('APPLY_NOW');
+
+  return { ...settings, ...patch };
+}
+
+async function endActiveTimer() {
+  const settings = await getSyncSettings();
+
+  if (!isActiveTimer(settings) && settings.sessionState === 'none' && settings.sessionEndsAt === 0) {
+    await clearTimerAlarms();
+    return settings;
+  }
+
+  return clearActiveTimerAndRestore(settings);
+}
+
+async function getTimerStatus() {
+  const settings = await normalizeExpiredTimerIfNeeded();
+  const now = Date.now();
+  const active = isActiveTimer(settings, now);
+
+  return {
+    sessionState: active ? settings.sessionState : 'none',
+    sessionEndsAt: active ? settings.sessionEndsAt : 0,
+    isActive: active,
+    remainingMs: active ? Math.max(0, settings.sessionEndsAt - now) : 0,
+  };
+}
+
 async function initializeAlarms() {
   chrome.alarms.create(PERIODIC_ALARM, { periodInMinutes: 5 });
   await scheduleBoundaryAlarm();
+  await normalizeExpiredTimerIfNeeded();
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -152,11 +305,16 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === PERIODIC_ALARM) {
     await notifyYouTubeTabs('TIME_TICK');
     await scheduleBoundaryAlarm();
+    await normalizeExpiredTimerIfNeeded();
   }
 
   if (alarm.name === BOUNDARY_ALARM) {
     await notifyYouTubeTabs('APPLY_NOW');
     await scheduleBoundaryAlarm();
+  }
+
+  if (alarm.name === TIMER_END_ALARM || alarm.name === TIMER_FALLBACK_ALARM) {
+    await normalizeExpiredTimerIfNeeded();
   }
 });
 
@@ -172,10 +330,45 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   ) {
     scheduleBoundaryAlarm();
   }
+
+  if (changes.sessionState || changes.sessionEndsAt) {
+    ensureTimerAlarms();
+  }
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || typeof message !== 'object') return;
+
+  if (message.type === 'START_FOCUS_SESSION') {
+    startFocusSession(message.durationMinutes)
+      .then(() => getTimerStatus())
+      .then((status) => sendResponse({ ok: true, ...status }))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message.type === 'START_BREAK') {
+    startBreak(message.durationMinutes)
+      .then(() => getTimerStatus())
+      .then((status) => sendResponse({ ok: true, ...status }))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message.type === 'END_ACTIVE_TIMER') {
+    endActiveTimer()
+      .then(() => getTimerStatus())
+      .then((status) => sendResponse({ ok: true, ...status }))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message.type === 'GET_TIMER_STATUS') {
+    getTimerStatus()
+      .then((status) => sendResponse({ ok: true, ...status }))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
 
   if (message.type === 'STATS_TICK') {
     getTodayStats()

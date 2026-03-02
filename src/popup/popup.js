@@ -18,6 +18,9 @@ const DEFAULT_SETTINGS = {
   scheduleDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
   scheduleStart: '20:00',
   scheduleEnd: '23:00',
+  sessionState: 'none',
+  sessionEndsAt: 0,
+  restoreFocusEnabled: true,
 };
 
 const DAY_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -50,12 +53,25 @@ const reloadBtn = document.getElementById('reloadBtn');
 const endBypassBtn = document.getElementById('endBypassBtn');
 const resetStatsBtn = document.getElementById('resetStatsBtn');
 
+const sessionDurationEl = document.getElementById('sessionDuration');
+const startSessionBtn = document.getElementById('startSessionBtn');
+const startBreakBtn = document.getElementById('startBreakBtn');
+const endTimerBtn = document.getElementById('endTimerBtn');
+const timerStatusEl = document.getElementById('timerStatus');
+
 const statMinutesEl = document.getElementById('statMinutes');
 const statVideosEl = document.getElementById('statVideos');
 const statShortsEl = document.getElementById('statShorts');
 
 let keywordDebounce = null;
+let timerPollInterval = null;
 let currentSettings = { ...DEFAULT_SETTINGS };
+let currentTimerStatus = {
+  sessionState: 'none',
+  sessionEndsAt: 0,
+  isActive: false,
+  remainingMs: 0,
+};
 
 function setStatus(message) {
   statusEl.textContent = message;
@@ -71,6 +87,13 @@ function parseKeywords(text) {
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+function formatRemaining(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
 function renderDays(selectedDays) {
@@ -122,20 +145,20 @@ async function messageActiveTab(message) {
   }
 }
 
-function readFormState() {
-  const settings = { ...currentSettings };
+function readFormStatePatch() {
+  const patch = {};
 
   for (const id of CHECKBOX_FIELDS) {
     const input = document.getElementById(id);
-    settings[id] = Boolean(input?.checked);
+    patch[id] = Boolean(input?.checked);
   }
 
-  settings.keywords = parseKeywords(keywordsEl.value);
-  settings.scheduleDays = getSelectedDays();
-  settings.scheduleStart = scheduleStartEl.value || DEFAULT_SETTINGS.scheduleStart;
-  settings.scheduleEnd = scheduleEndEl.value || DEFAULT_SETTINGS.scheduleEnd;
+  patch.keywords = parseKeywords(keywordsEl.value);
+  patch.scheduleDays = getSelectedDays();
+  patch.scheduleStart = scheduleStartEl.value || DEFAULT_SETTINGS.scheduleStart;
+  patch.scheduleEnd = scheduleEndEl.value || DEFAULT_SETTINGS.scheduleEnd;
 
-  return settings;
+  return patch;
 }
 
 function writeFormState(settings) {
@@ -182,19 +205,60 @@ function isWithinSchedule(settings, now = new Date()) {
   return (activeDays.has(today) && nowMin >= start) || (activeDays.has(yesterday) && nowMin < end);
 }
 
-function computeEffectiveText(settings) {
+function timerFocusOverride(timerStatus) {
+  if (timerStatus.isActive && timerStatus.sessionState === 'focus_session') {
+    return true;
+  }
+  if (timerStatus.isActive && timerStatus.sessionState === 'break') {
+    return false;
+  }
+  return null;
+}
+
+function computeEffectiveText(settings, timerStatus = currentTimerStatus) {
+  const timerOverride = timerFocusOverride(timerStatus);
+  if (timerOverride === true) return 'Effective Focus: ON (timed focus session)';
+  if (timerOverride === false) return 'Effective Focus: OFF (quick break active)';
+
   const bypassActive = (Number(settings.focusBypassUntil) || 0) > Date.now();
   const effective = settings.focusEnabled && isWithinSchedule(settings) && !bypassActive;
   if (effective) return 'Effective Focus: ON';
 
   if (!settings.focusEnabled) return 'Effective Focus: OFF (master toggle disabled)';
   if (bypassActive) return 'Effective Focus: OFF (temporary bypass active)';
-  if (settings.scheduleEnabled && !isWithinSchedule(settings)) return 'Effective Focus: OFF (outside schedule)';
+  if (settings.scheduleEnabled && !isWithinSchedule(settings)) {
+    return 'Effective Focus: OFF (outside schedule)';
+  }
   return 'Effective Focus: OFF';
 }
 
+function renderTimerStatus(timerStatus) {
+  currentTimerStatus = {
+    ...currentTimerStatus,
+    ...timerStatus,
+    isActive: Boolean(timerStatus.isActive),
+  };
+
+  if (currentTimerStatus.isActive && currentTimerStatus.sessionState === 'focus_session') {
+    const remaining = formatRemaining(currentTimerStatus.remainingMs || 0);
+    timerStatusEl.textContent = `Session active: ${remaining} remaining`;
+    endTimerBtn.classList.remove('hidden');
+    return;
+  }
+
+  if (currentTimerStatus.isActive && currentTimerStatus.sessionState === 'break') {
+    const remaining = formatRemaining(currentTimerStatus.remainingMs || 0);
+    timerStatusEl.textContent = `Break active: ${remaining} remaining`;
+    endTimerBtn.classList.remove('hidden');
+    return;
+  }
+
+  timerStatusEl.textContent = 'No active session or break.';
+  endTimerBtn.classList.add('hidden');
+}
+
 function renderEffectiveStatusFromSettings(settings) {
-  effectiveStatusEl.textContent = computeEffectiveText(settings);
+  effectiveStatusEl.textContent = computeEffectiveText(settings, currentTimerStatus);
   renderBypassStatus(settings);
 }
 
@@ -212,14 +276,35 @@ async function renderStats() {
   }
 }
 
+async function loadSettingsFromSync() {
+  const stored = await chrome.storage.sync.get(DEFAULT_SETTINGS);
+  currentSettings = { ...DEFAULT_SETTINGS, ...stored };
+}
+
+async function refreshTimerStatus() {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'GET_TIMER_STATUS' });
+    if (!response?.ok) return;
+
+    renderTimerStatus(response);
+    renderEffectiveStatusFromSettings(currentSettings);
+  } catch (_error) {
+    // Ignore errors when the extension reloads during development.
+  }
+}
+
 async function saveAndApply() {
-  const settings = readFormState();
-  currentSettings = { ...currentSettings, ...settings };
-  await chrome.storage.sync.set(settings);
+  const patch = readFormStatePatch();
+
+  const stored = await chrome.storage.sync.get(DEFAULT_SETTINGS);
+  const merged = { ...DEFAULT_SETTINGS, ...stored, ...patch };
+  currentSettings = merged;
+
+  await chrome.storage.sync.set(patch);
 
   const response = await messageActiveTab({
     type: 'SETTINGS_UPDATED',
-    settings,
+    settings: merged,
   });
 
   if (response.ok) {
@@ -229,6 +314,60 @@ async function saveAndApply() {
   }
 
   renderEffectiveStatusFromSettings(currentSettings);
+}
+
+async function startFocusSession() {
+  const durationMinutes = Number(sessionDurationEl.value) || 30;
+  const response = await chrome.runtime.sendMessage({
+    type: 'START_FOCUS_SESSION',
+    durationMinutes,
+  });
+
+  if (!response?.ok) {
+    setStatus('Could not start focus session.');
+    return;
+  }
+
+  await loadSettingsFromSync();
+  writeFormState(currentSettings);
+  renderTimerStatus(response);
+  renderEffectiveStatusFromSettings(currentSettings);
+  await messageActiveTab({ type: 'APPLY_NOW' });
+  setStatus(`Focus session started for ${durationMinutes} minutes.`);
+}
+
+async function startBreak() {
+  const response = await chrome.runtime.sendMessage({
+    type: 'START_BREAK',
+    durationMinutes: 5,
+  });
+
+  if (!response?.ok) {
+    setStatus('Could not start break.');
+    return;
+  }
+
+  await loadSettingsFromSync();
+  writeFormState(currentSettings);
+  renderTimerStatus(response);
+  renderEffectiveStatusFromSettings(currentSettings);
+  await messageActiveTab({ type: 'APPLY_NOW' });
+  setStatus('Quick break started for 5 minutes.');
+}
+
+async function endActiveTimer() {
+  const response = await chrome.runtime.sendMessage({ type: 'END_ACTIVE_TIMER' });
+  if (!response?.ok) {
+    setStatus('Could not end active timer.');
+    return;
+  }
+
+  await loadSettingsFromSync();
+  writeFormState(currentSettings);
+  renderTimerStatus(response);
+  renderEffectiveStatusFromSettings(currentSettings);
+  await messageActiveTab({ type: 'APPLY_NOW' });
+  setStatus('Active timer ended.');
 }
 
 function bindControls() {
@@ -246,6 +385,10 @@ function bindControls() {
       saveAndApply();
     }, 250);
   });
+
+  startSessionBtn.addEventListener('click', startFocusSession);
+  startBreakBtn.addEventListener('click', startBreak);
+  endTimerBtn.addEventListener('click', endActiveTimer);
 
   reloadBtn.addEventListener('click', async () => {
     const tab = await getCurrentYouTubeTab();
@@ -280,9 +423,12 @@ async function refreshStatusFromContent() {
     if (response.settings) {
       currentSettings = { ...currentSettings, ...response.settings };
     }
-    effectiveStatusEl.textContent = response.effectiveFocusEnabled
-      ? 'Effective Focus: ON'
-      : 'Effective Focus: OFF';
+
+    if (!currentTimerStatus.isActive) {
+      effectiveStatusEl.textContent = response.effectiveFocusEnabled
+        ? 'Effective Focus: ON'
+        : 'Effective Focus: OFF';
+    }
 
     if (response.bypassActive) {
       bypassStatusEl.textContent = `Bypass active until ${localDateTime(response.bypassUntil)}`;
@@ -297,18 +443,35 @@ async function refreshStatusFromContent() {
   }
 }
 
+function startTimerPolling() {
+  if (timerPollInterval) {
+    clearInterval(timerPollInterval);
+  }
+
+  timerPollInterval = setInterval(() => {
+    refreshTimerStatus();
+  }, 1000);
+}
+
 async function init() {
   bindControls();
 
-  const stored = await chrome.storage.sync.get(DEFAULT_SETTINGS);
-  const settings = { ...DEFAULT_SETTINGS, ...stored };
-  currentSettings = settings;
+  await loadSettingsFromSync();
+  writeFormState(currentSettings);
+  renderEffectiveStatusFromSettings(currentSettings);
 
-  writeFormState(settings);
-  renderEffectiveStatusFromSettings(settings);
+  await refreshTimerStatus();
   await refreshStatusFromContent();
   await renderStats();
+
+  startTimerPolling();
 }
+
+window.addEventListener('unload', () => {
+  if (timerPollInterval) {
+    clearInterval(timerPollInterval);
+  }
+});
 
 init().catch(() => {
   setStatus('Failed to initialize popup.');

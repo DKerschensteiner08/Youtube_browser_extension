@@ -21,6 +21,9 @@
     scheduleDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
     scheduleStart: '20:00',
     scheduleEnd: '23:00',
+    sessionState: 'none',
+    sessionEndsAt: 0,
+    restoreFocusEnabled: true,
   };
 
   function normalizeTime(value, fallback) {
@@ -58,6 +61,10 @@
 
   function normalizeSettings(raw) {
     const merged = { ...DEFAULT_SETTINGS, ...(raw || {}) };
+    const normalizedSessionState =
+      merged.sessionState === 'focus_session' || merged.sessionState === 'break'
+        ? merged.sessionState
+        : 'none';
 
     return {
       focusEnabled: Boolean(merged.focusEnabled),
@@ -79,6 +86,9 @@
       scheduleDays: normalizeScheduleDays(merged.scheduleDays),
       scheduleStart: normalizeTime(merged.scheduleStart, DEFAULT_SETTINGS.scheduleStart),
       scheduleEnd: normalizeTime(merged.scheduleEnd, DEFAULT_SETTINGS.scheduleEnd),
+      sessionState: normalizedSessionState,
+      sessionEndsAt: Math.max(0, Number(merged.sessionEndsAt) || 0),
+      restoreFocusEnabled: Boolean(merged.restoreFocusEnabled),
     };
   }
 

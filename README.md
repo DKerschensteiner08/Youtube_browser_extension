@@ -1,10 +1,18 @@
 # YouTube Focus Mode (Manifest V3) - v2
 
-YouTube Focus Mode is a Chrome extension that reduces YouTube distractions with configurable hiding rules, keyword filtering, a focus nudge overlay, scheduling, and local-only usage stats.
+YouTube Focus Mode is a Chrome extension that reduces YouTube distractions with configurable hiding rules, keyword filtering, timed focus sessions, quick breaks, scheduling, and local-only usage stats.
 
 ## v2 Features
 
 - Master Focus toggle with **effective status** (schedule + bypass aware)
+- Timed Focus Sessions:
+  - Start a 10/20/30/45/60 minute enforced focus session
+  - Session temporarily enforces focus even if the master toggle was off
+  - At session end, `focusEnabled` is restored to its pre-session value
+- Quick Break:
+  - One-click 5-minute break temporarily disables focus rules
+  - Automatically returns to normal behavior when break ends
+  - End active session/break early from popup
 - Hides distracting UI blocks:
   - Shorts shelves/tabs/items
   - Watch-page Up Next sidebar (optional)
@@ -75,6 +83,9 @@ YouTube Focus Mode is a Chrome extension that reduces YouTube distractions with 
 6. Validate:
    - Popup settings persist after closing/reopening popup.
    - `SETTINGS_UPDATED` applies without full tab reload.
+   - Starting a timed focus session immediately applies focus rules and shows countdown.
+   - Starting a break immediately shows all content and shows countdown.
+   - Ending session/break early from popup immediately re-applies normal behavior.
    - Nudge appears based on Nudge settings.
    - Continue anyway starts bypass and bypass status updates in popup.
    - Schedule ON/OFF changes effective status and content behavior.
