@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YouTube Focus Mode</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="popup">
+      <h1>YouTube Focus Mode</h1>
+      <p id="status" class="status" aria-live="polite"></p>
+
+      <section class="toggles" aria-label="Focus settings">
+        <label class="toggle-row">
+          <span>Focus Mode</span>
+          <input id="focusEnabled" type="checkbox" />
+        </label>
+        <label class="toggle-row">
+          <span>Hide Shorts</span>
+          <input id="hideShorts" type="checkbox" />
+        </label>
+        <label class="toggle-row">
+          <span>Hide Up Next Sidebar</span>
+          <input id="hideSidebarRecs" type="checkbox" />
+        </label>
+        <label class="toggle-row">
+          <span>Hide Comments</span>
+          <input id="hideComments" type="checkbox" />
+        </label>
+        <label class="toggle-row">
+          <span>Hide Home Feed</span>
+          <input id="hideHomeFeed" type="checkbox" />
+        </label>
+      </section>
+
+      <button id="reloadBtn" type="button">Reload YouTube tab</button>
+      <p class="hint">Changes apply instantly on open YouTube tabs.</p>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
