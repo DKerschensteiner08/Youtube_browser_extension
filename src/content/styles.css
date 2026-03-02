@@ -1,0 +1,70 @@
+/* Applied only by the content script. Keep this file focused on conservative, known-stable selectors. */
+
+.yfm-hidden {
+  display: none !important;
+}
+
+.yfm-hide-sidebar ytd-watch-flexy[is-two-columns_] #primary {
+  max-width: 100% !important;
+}
+
+.yfm-home-feed-hidden ytd-browse[page-subtype='home'] #primary,
+.yfm-home-feed-hidden ytd-rich-grid-renderer {
+  display: none !important;
+}
+
+#yfm-nudge-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  background: rgba(8, 8, 10, 0.78);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#yfm-nudge-card {
+  width: min(92vw, 430px);
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  padding: 20px;
+  color: #121212;
+  font-family: Arial, sans-serif;
+}
+
+#yfm-nudge-card h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+#yfm-nudge-card p {
+  margin: 0 0 14px;
+  color: #444;
+  font-size: 14px;
+}
+
+.yfm-nudge-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.yfm-nudge-btn {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.yfm-nudge-btn--primary {
+  background: #cc0000;
+  color: #fff;
+}
+
+.yfm-nudge-btn--secondary {
+  background: #ededf0;
+  color: #111;
+}

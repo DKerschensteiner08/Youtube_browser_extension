@@ -1,18 +1,38 @@
 {
   "manifest_version": 3,
   "name": "YouTube Focus Mode",
-  "version": "1.0.0",
-  "description": "Hide distracting YouTube UI elements with configurable focus toggles.",
-  "permissions": ["storage"],
+  "version": "2.0.0",
+  "description": "Focus toolkit for YouTube: hide distractions, filter keywords, schedule focus windows, and track local stats.",
+  "permissions": ["storage", "alarms"],
   "host_permissions": ["https://www.youtube.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
-    "default_popup": "popup.html"
+    "default_popup": "popup/popup.html"
   },
   "content_scripts": [
     {
       "matches": ["https://www.youtube.com/*"],
-      "js": ["content.js"],
+      "js": [
+        "content/storage.js",
+        "content/selectors.js",
+        "content/pageDetect.js",
+        "content/schedule.js",
+        "content/keywordFilter.js",
+        "content/nudge.js",
+        "content/stats.js",
+        "content/observer.js",
+        "content/apply.js",
+        "content/content.js"
+      ],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["content/styles.css"],
+      "matches": ["https://www.youtube.com/*"]
     }
   ]
 }

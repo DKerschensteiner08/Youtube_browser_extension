@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YouTube Focus Mode</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="popup">
+      <header>
+        <h1>YouTube Focus Mode</h1>
+        <p id="status" class="status" aria-live="polite"></p>
+      </header>
+
+      <section class="card">
+        <h2>Master</h2>
+        <label class="toggle-row"><span>Focus Mode</span><input id="focusEnabled" type="checkbox" /></label>
+        <p id="effectiveStatus" class="note"></p>
+        <p id="bypassStatus" class="note"></p>
+        <button id="endBypassBtn" type="button" class="secondary">End bypass now</button>
+      </section>
+
+      <section class="card">
+        <h2>Distractions</h2>
+        <label class="toggle-row"><span>Hide Shorts</span><input id="hideShorts" type="checkbox" /></label>
+        <label class="toggle-row"><span>Hide Up Next Sidebar</span><input id="hideSidebarRecs" type="checkbox" /></label>
+        <label class="toggle-row"><span>Hide Comments</span><input id="hideComments" type="checkbox" /></label>
+        <label class="toggle-row"><span>Hide Home Feed</span><input id="hideHomeFeed" type="checkbox" /></label>
+        <label class="toggle-row"><span>Hide Nav: Shorts</span><input id="hideNavShorts" type="checkbox" /></label>
+        <label class="toggle-row"><span>Hide Nav: Explore/Trending</span><input id="hideNavExplore" type="checkbox" /></label>
+        <label class="toggle-row"><span>Hide “More from YouTube” Nav</span><input id="hideNavSubscriptionsSuggestions" type="checkbox" /></label>
+      </section>
+
+      <section class="card">
+        <h2>Keyword Filter</h2>
+        <label class="toggle-row"><span>Enable keyword filter</span><input id="keywordEnabled" type="checkbox" /></label>
+        <textarea id="keywords" rows="5" placeholder="One keyword per line"></textarea>
+        <label class="toggle-row"><span>Case sensitive</span><input id="keywordCaseSensitive" type="checkbox" /></label>
+        <label class="toggle-row"><span>Whole word only</span><input id="keywordMatchWholeWord" type="checkbox" /></label>
+      </section>
+
+      <section class="card">
+        <h2>Nudge</h2>
+        <label class="toggle-row"><span>Enable nudge overlay</span><input id="nudgeEnabled" type="checkbox" /></label>
+        <label class="toggle-row"><span>Show only on Home page</span><input id="nudgeOnHomeOnly" type="checkbox" /></label>
+      </section>
+
+      <section class="card">
+        <h2>Schedule</h2>
+        <label class="toggle-row"><span>Enable schedule</span><input id="scheduleEnabled" type="checkbox" /></label>
+        <div class="days" id="scheduleDays"></div>
+        <div class="time-row">
+          <label>Start <input id="scheduleStart" type="time" /></label>
+          <label>End <input id="scheduleEnd" type="time" /></label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Stats (Today)</h2>
+        <p class="stat-line">Minutes on YouTube: <strong id="statMinutes">0</strong></p>
+        <p class="stat-line">Videos hidden: <strong id="statVideos">0</strong></p>
+        <p class="stat-line">Shorts hidden: <strong id="statShorts">0</strong></p>
+        <button id="resetStatsBtn" type="button" class="secondary">Reset stats</button>
+      </section>
+
+      <section class="card">
+        <h2>Utilities</h2>
+        <button id="reloadBtn" type="button">Reload YouTube tab</button>
+        <p class="note">If changes seem delayed, reload the active YouTube tab.</p>
+      </section>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
